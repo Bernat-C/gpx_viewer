@@ -21,6 +21,8 @@ class GPXViewer:
         self.elev_marker = None
         self.select_start = None
         self.select_end = None
+        self.start_entry = None
+        self.end_entry = None
         self.selecting_crop = False
 
         # Toolbar
@@ -51,18 +53,6 @@ class GPXViewer:
         self.meta_frame.pack(padx=5, pady=5, anchor="nw")
         self.meta_entries = {}
 
-        # Crop inputs side by side
-        self.crop_frame = tk.Frame(self.left_frame, bg="#ffffff")
-        self.crop_frame.pack(pady=5, anchor="nw")
-
-        tk.Label(self.crop_frame, text="Start Index:", bg="#ffffff").grid(row=0, column=0)
-        self.start_entry = tk.Entry(self.crop_frame, width=5)
-        self.start_entry.grid(row=0, column=1)
-
-        tk.Label(self.crop_frame, text="End Index:", bg="#ffffff").grid(row=0, column=2)
-        self.end_entry = tk.Entry(self.crop_frame, width=5)
-        self.end_entry.grid(row=0, column=3)
-
         # Elevation plot at bottom of left side
         self.fig_elev, self.ax_elev = plt.subplots(figsize=(10, 2))
         self.canvas_elev = FigureCanvasTkAgg(self.fig_elev, master=self.left_frame)
@@ -87,8 +77,17 @@ class GPXViewer:
         with open(file_path, 'r') as gpx_file:
             self.gpx = gpxpy.parse(gpx_file)
             self.extract_points()
-            self.display_route_and_elevation()
+            
+            if self.start_entry:
+                self.start_entry.delete(0, tk.END)
+                self.start_entry.insert(0, "0")
+
+            if self.end_entry:
+                self.end_entry.delete(0, tk.END)
+                self.end_entry.insert(0, str(len(self.points)))
+        
             self.display_metadata()
+            self.display_route_and_elevation()
 
     def extract_points(self):
         self.points = []
@@ -130,6 +129,8 @@ class GPXViewer:
         self.fig_elev.tight_layout()
         self.canvas_route.draw()
         self.canvas_elev.draw()
+        
+        self.update_crop_metadata(start, end)
 
     def display_metadata(self):
         for widget in self.meta_frame.winfo_children():
@@ -146,7 +147,7 @@ class GPXViewer:
                 elevation_gain += delta
             elif delta < 0:
                 elevation_loss += abs(delta)
-
+        
         metadata = {
             "Name": self.gpx.name,
             "Description": self.gpx.description,
@@ -157,7 +158,9 @@ class GPXViewer:
             "Distance (km)": f"{total_distance:.2f}",
             "Duration (hrs)": f"{duration:.2f}",
             "Elevation Gain (m)": f"{elevation_gain:.0f}",
-            "Elevation Loss (m)": f"{elevation_loss:.0f}"
+            "Elevation Loss (m)": f"{elevation_loss:.0f}",
+            "Start Index": f"{0}",
+            "End Index": f"{len(self.points)-1}"
         }
 
         for i, (key, value) in enumerate(metadata.items()):
@@ -168,6 +171,12 @@ class GPXViewer:
                 entry.config(state="normal")
             elif key in ["Name", "Description", "Author Name", "Author Email", "Time", "Duration (hrs)"]:
                 entry.config(state="normal")
+            elif key in ["Start Index"]:
+                entry.config(state="normal")
+                self.start_entry = entry
+            elif key in ["End Index"]:
+                entry.config(state="normal")
+                self.end_entry = entry
             else:
                 entry.config(state="readonly")
             entry.grid(row=i, column=1, sticky="w")
@@ -185,34 +194,29 @@ class GPXViewer:
         for i in range(1, len(cropped_points)):
             prev = cropped_points[i - 1]
             curr = cropped_points[i]
+            if prev and curr:
+                distance += curr.distance_2d(prev)
+                if curr.elevation is not None and prev.elevation is not None:
+                    delta = curr.elevation - prev.elevation
+                    if delta > 0:
+                        gain += delta
+                    elif delta < 0:
+                        loss += abs(delta)
 
-            distance += curr.distance_2d(prev)
-            delta = curr.elevation - prev.elevation if curr.elevation and prev.elevation else 0
-            if delta > 0:
-                gain += delta
-            elif delta < 0:
-                loss += abs(delta)
+        updates = {
+            "Points": str(len(cropped_points)),
+            "Distance (km)": f"{distance / 1000:.2f}",
+            "Elevation Gain (m)": f"{gain:.0f}",
+            "Elevation Loss (m)": f"{loss:.0f}"
+        }
 
-        # Update GUI fields
-        self.meta_entries["Points"].config(state="normal")
-        self.meta_entries["Points"].delete(0, tk.END)
-        self.meta_entries["Points"].insert(0, str(len(cropped_points)))
-        self.meta_entries["Points"].config(state="readonly")
-
-        self.meta_entries["Distance (km)"].config(state="normal")
-        self.meta_entries["Distance (km)"].delete(0, tk.END)
-        self.meta_entries["Distance (km)"].insert(0, f"{distance / 1000:.2f}")
-        self.meta_entries["Distance (km)"].config(state="readonly")
-
-        self.meta_entries["Elevation Gain (m)"].config(state="normal")
-        self.meta_entries["Elevation Gain (m)"].delete(0, tk.END)
-        self.meta_entries["Elevation Gain (m)"].insert(0, f"{gain:.0f}")
-        self.meta_entries["Elevation Gain (m)"].config(state="readonly")
-
-        self.meta_entries["Elevation Loss (m)"].config(state="normal")
-        self.meta_entries["Elevation Loss (m)"].delete(0, tk.END)
-        self.meta_entries["Elevation Loss (m)"].insert(0, f"{loss:.0f}")
-        self.meta_entries["Elevation Loss (m)"].config(state="readonly")
+        for key, value in updates.items():
+            entry = self.meta_entries.get(key)
+            if entry:
+                entry.config(state="normal")
+                entry.delete(0, tk.END)
+                entry.insert(0, value)
+                entry.config(state="readonly")
 
     def crop_and_save(self):
         try:
@@ -246,6 +250,9 @@ class GPXViewer:
         self.start_entry.delete(0, tk.END)
         self.end_entry.delete(0, tk.END)
         self.display_route_and_elevation()
+        
+        self.route_marker = None
+        self.elev_marker = None
 
     def invert_trail(self):
         self.points.reverse()
@@ -295,7 +302,6 @@ class GPXViewer:
             self.end_entry.delete(0, tk.END)
             self.end_entry.insert(0, str(end))
             self.display_route_and_elevation()
-            self.update_crop_metadata(start, end)
 
     def on_mouse_drag(self, event):
         if self.selecting_crop and event.inaxes == self.ax_elev and event.xdata is not None:
