@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
+from pathlib import Path
 import gpxpy
 import gpxpy.gpx
 import matplotlib.pyplot as plt
@@ -10,6 +11,7 @@ class GPXViewer:
     def __init__(self, root):
         self.root = root
         self.root.title("GPX Viewer and Cropper")
+        self.root.configure(bg="#ffffff")  # Creamy yellow background
 
         self.gpx = None
         self.points = []
@@ -22,50 +24,47 @@ class GPXViewer:
         self.selecting_crop = False
 
         # Toolbar
-        self.toolbar = tk.Frame(root, bg="lightgray")
+        self.toolbar = tk.Frame(root, bg="#f5deb3", bd=2, relief=tk.RIDGE)
         self.toolbar.pack(side=tk.TOP, fill=tk.X)
 
-        self.load_btn = tk.Button(self.toolbar, text="Load GPX", command=self.load_gpx)
-        self.load_btn.pack(side=tk.LEFT, padx=5, pady=5)
-
-        self.crop_btn = tk.Button(self.toolbar, text="Crop & Save", command=self.crop_and_save)
-        self.crop_btn.pack(side=tk.LEFT, padx=5, pady=5)
-
-        self.reset_btn = tk.Button(self.toolbar, text="Reset Selection", command=self.reset_selection)
-        self.reset_btn.pack(side=tk.LEFT, padx=5, pady=5)
-
-        self.invert_btn = tk.Button(self.toolbar, text="Invert Trail", command=self.invert_trail)
-        self.invert_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        for btn_text, cmd in [
+            ("Load GPX", self.load_gpx),
+            ("Crop & Save", self.crop_and_save),
+            ("Reset Selection", self.reset_selection),
+            ("Invert Trail", self.invert_trail)
+        ]:
+            b = tk.Button(self.toolbar, text=btn_text, command=cmd, bg="#ffe4b5", relief=tk.FLAT, padx=10)
+            b.pack(side=tk.LEFT, padx=5, pady=5)
 
         # Main layout
-        self.main_frame = tk.Frame(root, bg="lightgray")
+        self.main_frame = tk.Frame(root, bg="#ffffff")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.left_frame = tk.Frame(self.main_frame, bg="lightgray")
+        self.left_frame = tk.Frame(self.main_frame, bg="#ffffff")
         self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH)
 
-        self.right_frame = tk.Frame(self.main_frame, bg="lightgray")
+        self.right_frame = tk.Frame(self.main_frame, bg="#ffffff")
         self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
         # Metadata (editable)
-        self.meta_frame = tk.Frame(self.left_frame, bg="lightgray")
+        self.meta_frame = tk.Frame(self.left_frame, bg="#ffffff")
         self.meta_frame.pack(padx=5, pady=5, anchor="nw")
         self.meta_entries = {}
 
         # Crop inputs side by side
-        self.crop_frame = tk.Frame(self.left_frame, bg="lightgray")
+        self.crop_frame = tk.Frame(self.left_frame, bg="#ffffff")
         self.crop_frame.pack(pady=5, anchor="nw")
 
-        tk.Label(self.crop_frame, text="Start Index:", bg="lightgray").grid(row=0, column=0)
+        tk.Label(self.crop_frame, text="Start Index:", bg="#ffffff").grid(row=0, column=0)
         self.start_entry = tk.Entry(self.crop_frame, width=5)
         self.start_entry.grid(row=0, column=1)
 
-        tk.Label(self.crop_frame, text="End Index:", bg="lightgray").grid(row=0, column=2)
+        tk.Label(self.crop_frame, text="End Index:", bg="#ffffff").grid(row=0, column=2)
         self.end_entry = tk.Entry(self.crop_frame, width=5)
         self.end_entry.grid(row=0, column=3)
 
         # Elevation plot at bottom of left side
-        self.fig_elev, self.ax_elev = plt.subplots(figsize=(8, 2))
+        self.fig_elev, self.ax_elev = plt.subplots(figsize=(10, 2))
         self.canvas_elev = FigureCanvasTkAgg(self.fig_elev, master=self.left_frame)
         self.canvas_elev.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.X)
         self.canvas_elev.mpl_connect("motion_notify_event", self.on_hover)
@@ -77,10 +76,11 @@ class GPXViewer:
         self.fig_route, self.ax_route = plt.subplots(figsize=(10, 6))
         self.canvas_route = FigureCanvasTkAgg(self.fig_route, master=self.right_frame)
         self.canvas_route.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        self.canvas_route.mpl_connect("motion_notify_event", self.on_hover)
+        #self.canvas_route.mpl_connect("motion_notify_event", self.on_hover)
 
     def load_gpx(self):
-        file_path = filedialog.askopenfilename(filetypes=[("GPX files", "*.gpx")])
+        filesdir = Path(__file__).parent / r"data"
+        file_path = filedialog.askopenfilename(initialdir=filesdir, filetypes=[("GPX files", "*.gpx")])
         if not file_path:
             return
 
@@ -117,14 +117,14 @@ class GPXViewer:
         self.ax_route.plot(self.lons[start:end], self.lats[start:end], color='blue')
         self.ax_route.plot(self.lons[end:], self.lats[end:], color='gray')
         self.ax_route.set_title("Route")
-        self.ax_route.set_facecolor('white')
+        self.ax_route.set_facecolor('#fefcea')
 
         self.ax_elev.plot(self.elevs, color='green')
         self.ax_elev.axvspan(0, start, color='lightgray', alpha=0.3)
         self.ax_elev.axvspan(start, end, color='gray', alpha=0.5)
         self.ax_elev.axvspan(end, len(self.points), color='lightgray', alpha=0.3)
         self.ax_elev.set_title("Elevation Profile")
-        self.ax_elev.set_facecolor('white')
+        self.ax_elev.set_facecolor('#fefcea')
 
         self.fig_route.tight_layout()
         self.fig_elev.tight_layout()
@@ -135,6 +135,18 @@ class GPXViewer:
         for widget in self.meta_frame.winfo_children():
             widget.destroy()
 
+        total_distance = self.gpx.length_2d() / 1000  # km
+        duration = self.gpx.get_duration() / 3600 if self.gpx.get_duration() else 0
+
+        elevation_gain = 0
+        elevation_loss = 0
+        for i in range(1, len(self.points)):
+            delta = self.points[i].elevation - self.points[i - 1].elevation
+            if delta > 0:
+                elevation_gain += delta
+            elif delta < 0:
+                elevation_loss += abs(delta)
+
         metadata = {
             "Name": self.gpx.name,
             "Description": self.gpx.description,
@@ -142,14 +154,22 @@ class GPXViewer:
             "Author Email": self.gpx.author_email,
             "Time": str(self.gpx.time),
             "Points": str(len(self.points)),
-            "Distance (km)": f"{self.gpx.length_2d() / 1000:.2f}",
-            "Duration (hrs)": f"{(self.gpx.get_duration() or 0) / 3600:.2f}"
+            "Distance (km)": f"{total_distance:.2f}",
+            "Duration (hrs)": f"{duration:.2f}",
+            "Elevation Gain (m)": f"{elevation_gain:.0f}",
+            "Elevation Loss (m)": f"{elevation_loss:.0f}"
         }
 
         for i, (key, value) in enumerate(metadata.items()):
-            tk.Label(self.meta_frame, text=key+":", anchor="w", bg="lightgray").grid(row=i, column=0, sticky="w")
-            entry = tk.Entry(self.meta_frame, width=30)
-            entry.insert(0, value)
+            tk.Label(self.meta_frame, text=key+":", anchor="w", bg="#ffffff").grid(row=i, column=0, sticky="w")
+            entry = tk.Entry(self.meta_frame, width=60)
+            entry.insert(0, str(value) if value is not None else "")
+            if key == "Duration (hrs)":
+                entry.config(state="normal")
+            elif key in ["Name", "Description", "Author Name", "Author Email", "Time", "Duration (hrs)"]:
+                entry.config(state="normal")
+            else:
+                entry.config(state="readonly")
             entry.grid(row=i, column=1, sticky="w")
             self.meta_entries[key] = entry
 
@@ -203,13 +223,13 @@ class GPXViewer:
         if index is None or not (0 <= index < len(self.points)):
             return
 
-        if self.route_marker:
-            self.route_marker.remove()
-        if self.elev_marker:
-            self.elev_marker.remove()
+        if self.route_marker is None:
+            self.route_marker, = self.ax_route.plot([], [], 'ro')
+        if self.elev_marker is None:
+            self.elev_marker, = self.ax_elev.plot([], [], 'ro')
 
-        self.route_marker = self.ax_route.plot(self.lons[index], self.lats[index], 'ro')[0]
-        self.elev_marker = self.ax_elev.plot(index, self.elevs[index], 'ro')[0]
+        self.route_marker.set_data([self.lons[index]], [self.lats[index]])
+        self.elev_marker.set_data([index], [self.elevs[index]])
 
         self.canvas_route.draw()
         self.canvas_elev.draw()
@@ -221,6 +241,8 @@ class GPXViewer:
             self.selecting_crop = True
 
     def on_mouse_release(self, event):
+        self.route_marker = None
+        self.elev_marker = None
         if event.inaxes == self.ax_elev and event.xdata is not None:
             x = int(event.xdata)
             self.select_end = max(0, min(x, len(self.points) - 1))
