@@ -173,6 +173,47 @@ class GPXViewer:
             entry.grid(row=i, column=1, sticky="w")
             self.meta_entries[key] = entry
 
+    def update_crop_metadata(self, start, end):
+        if not self.points or start >= end:
+            return
+
+        cropped_points = self.points[start:end]
+        distance = 0
+        gain = 0
+        loss = 0
+
+        for i in range(1, len(cropped_points)):
+            prev = cropped_points[i - 1]
+            curr = cropped_points[i]
+
+            distance += curr.distance_2d(prev)
+            delta = curr.elevation - prev.elevation if curr.elevation and prev.elevation else 0
+            if delta > 0:
+                gain += delta
+            elif delta < 0:
+                loss += abs(delta)
+
+        # Update GUI fields
+        self.meta_entries["Points"].config(state="normal")
+        self.meta_entries["Points"].delete(0, tk.END)
+        self.meta_entries["Points"].insert(0, str(len(cropped_points)))
+        self.meta_entries["Points"].config(state="readonly")
+
+        self.meta_entries["Distance (km)"].config(state="normal")
+        self.meta_entries["Distance (km)"].delete(0, tk.END)
+        self.meta_entries["Distance (km)"].insert(0, f"{distance / 1000:.2f}")
+        self.meta_entries["Distance (km)"].config(state="readonly")
+
+        self.meta_entries["Elevation Gain (m)"].config(state="normal")
+        self.meta_entries["Elevation Gain (m)"].delete(0, tk.END)
+        self.meta_entries["Elevation Gain (m)"].insert(0, f"{gain:.0f}")
+        self.meta_entries["Elevation Gain (m)"].config(state="readonly")
+
+        self.meta_entries["Elevation Loss (m)"].config(state="normal")
+        self.meta_entries["Elevation Loss (m)"].delete(0, tk.END)
+        self.meta_entries["Elevation Loss (m)"].insert(0, f"{loss:.0f}")
+        self.meta_entries["Elevation Loss (m)"].config(state="readonly")
+
     def crop_and_save(self):
         try:
             start = int(self.start_entry.get())
@@ -254,6 +295,7 @@ class GPXViewer:
             self.end_entry.delete(0, tk.END)
             self.end_entry.insert(0, str(end))
             self.display_route_and_elevation()
+            self.update_crop_metadata(start, end)
 
     def on_mouse_drag(self, event):
         if self.selecting_crop and event.inaxes == self.ax_elev and event.xdata is not None:
