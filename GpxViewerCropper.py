@@ -17,50 +17,67 @@ class GPXViewer:
         self.hover_line_elev = None
         self.route_marker = None
         self.elev_marker = None
+        self.select_start = None
+        self.select_end = None
+        self.selecting_crop = False
+
+        # Toolbar
+        self.toolbar = tk.Frame(root, bg="lightgray")
+        self.toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        self.load_btn = tk.Button(self.toolbar, text="Load GPX", command=self.load_gpx)
+        self.load_btn.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.crop_btn = tk.Button(self.toolbar, text="Crop & Save", command=self.crop_and_save)
+        self.crop_btn.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.reset_btn = tk.Button(self.toolbar, text="Reset Selection", command=self.reset_selection)
+        self.reset_btn.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.invert_btn = tk.Button(self.toolbar, text="Invert Trail", command=self.invert_trail)
+        self.invert_btn.pack(side=tk.LEFT, padx=5, pady=5)
 
         # Main layout
-        self.main_frame = tk.Frame(root)
+        self.main_frame = tk.Frame(root, bg="lightgray")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.left_frame = tk.Frame(self.main_frame)
-        self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.left_frame = tk.Frame(self.main_frame, bg="lightgray")
+        self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH)
 
-        self.right_frame = tk.Frame(self.main_frame)
+        self.right_frame = tk.Frame(self.main_frame, bg="lightgray")
         self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        # Controls and metadata on the left
-        self.load_btn = tk.Button(self.left_frame, text="Load GPX", command=self.load_gpx)
-        self.load_btn.pack()
+        # Metadata (editable)
+        self.meta_frame = tk.Frame(self.left_frame, bg="lightgray")
+        self.meta_frame.pack(padx=5, pady=5, anchor="nw")
+        self.meta_entries = {}
 
-        self.meta_label = tk.Label(self.left_frame, text="No GPX loaded")
-        self.meta_label.pack()
+        # Crop inputs side by side
+        self.crop_frame = tk.Frame(self.left_frame, bg="lightgray")
+        self.crop_frame.pack(pady=5, anchor="nw")
 
-        # Elevation plot (top of left side)
-        self.fig_elev, self.ax_elev = plt.subplots(figsize=(5, 2))
-        self.canvas_elev = FigureCanvasTkAgg(self.fig_elev, master=self.left_frame)
-        self.canvas_elev.get_tk_widget().pack()
-        self.canvas_elev.mpl_connect("motion_notify_event", self.on_hover)
-
-        # Route plot (right side)
-        self.fig_route, self.ax_route = plt.subplots(figsize=(5, 4))
-        self.canvas_route = FigureCanvasTkAgg(self.fig_route, master=self.right_frame)
-        self.canvas_route.get_tk_widget().pack()
-        self.canvas_route.mpl_connect("motion_notify_event", self.on_hover)
-
-        # Crop inputs
-        self.crop_frame = tk.Frame(self.left_frame)
-        self.crop_frame.pack()
-
-        tk.Label(self.crop_frame, text="Start Index:").pack(side=tk.LEFT)
+        tk.Label(self.crop_frame, text="Start Index:", bg="lightgray").grid(row=0, column=0)
         self.start_entry = tk.Entry(self.crop_frame, width=5)
-        self.start_entry.pack(side=tk.LEFT)
+        self.start_entry.grid(row=0, column=1)
 
-        tk.Label(self.crop_frame, text="End Index:").pack(side=tk.LEFT)
+        tk.Label(self.crop_frame, text="End Index:", bg="lightgray").grid(row=0, column=2)
         self.end_entry = tk.Entry(self.crop_frame, width=5)
-        self.end_entry.pack(side=tk.LEFT)
+        self.end_entry.grid(row=0, column=3)
 
-        self.crop_btn = tk.Button(self.left_frame, text="Crop & Save", command=self.crop_and_save)
-        self.crop_btn.pack()
+        # Elevation plot at bottom of left side
+        self.fig_elev, self.ax_elev = plt.subplots(figsize=(8, 2))
+        self.canvas_elev = FigureCanvasTkAgg(self.fig_elev, master=self.left_frame)
+        self.canvas_elev.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.X)
+        self.canvas_elev.mpl_connect("motion_notify_event", self.on_hover)
+        self.canvas_elev.mpl_connect("button_press_event", self.on_mouse_press)
+        self.canvas_elev.mpl_connect("button_release_event", self.on_mouse_release)
+        self.canvas_elev.mpl_connect("motion_notify_event", self.on_mouse_drag)
+
+        # Route plot on right side
+        self.fig_route, self.ax_route = plt.subplots(figsize=(10, 6))
+        self.canvas_route = FigureCanvasTkAgg(self.fig_route, master=self.right_frame)
+        self.canvas_route.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.canvas_route.mpl_connect("motion_notify_event", self.on_hover)
 
     def load_gpx(self):
         file_path = filedialog.askopenfilename(filetypes=[("GPX files", "*.gpx")])
@@ -91,11 +108,21 @@ class GPXViewer:
         self.lons = [p.longitude for p in self.points]
         self.elevs = [p.elevation for p in self.points]
 
-        self.ax_route.plot(self.lons, self.lats, color='blue')
+        start = self.get_valid_index(self.start_entry.get(), default=0)
+        end = self.get_valid_index(self.end_entry.get(), default=len(self.points))
+        end = min(end, len(self.points))
+        start = max(start, 0)
+
+        self.ax_route.plot(self.lons[:start], self.lats[:start], color='gray')
+        self.ax_route.plot(self.lons[start:end], self.lats[start:end], color='blue')
+        self.ax_route.plot(self.lons[end:], self.lats[end:], color='gray')
         self.ax_route.set_title("Route")
         self.ax_route.set_facecolor('white')
 
         self.ax_elev.plot(self.elevs, color='green')
+        self.ax_elev.axvspan(0, start, color='lightgray', alpha=0.3)
+        self.ax_elev.axvspan(start, end, color='gray', alpha=0.5)
+        self.ax_elev.axvspan(end, len(self.points), color='lightgray', alpha=0.3)
         self.ax_elev.set_title("Elevation Profile")
         self.ax_elev.set_facecolor('white')
 
@@ -105,9 +132,26 @@ class GPXViewer:
         self.canvas_elev.draw()
 
     def display_metadata(self):
-        total_distance = self.gpx.length_2d() / 1000  # in km
-        duration = self.gpx.get_duration() / 3600 if self.gpx.get_duration() else 0  # in hours
-        self.meta_label.config(text=f"Points: {len(self.points)} | Distance: {total_distance:.2f} km | Duration: {duration:.2f} hrs")
+        for widget in self.meta_frame.winfo_children():
+            widget.destroy()
+
+        metadata = {
+            "Name": self.gpx.name,
+            "Description": self.gpx.description,
+            "Author Name": self.gpx.author_name,
+            "Author Email": self.gpx.author_email,
+            "Time": str(self.gpx.time),
+            "Points": str(len(self.points)),
+            "Distance (km)": f"{self.gpx.length_2d() / 1000:.2f}",
+            "Duration (hrs)": f"{(self.gpx.get_duration() or 0) / 3600:.2f}"
+        }
+
+        for i, (key, value) in enumerate(metadata.items()):
+            tk.Label(self.meta_frame, text=key+":", anchor="w", bg="lightgray").grid(row=i, column=0, sticky="w")
+            entry = tk.Entry(self.meta_frame, width=30)
+            entry.insert(0, value)
+            entry.grid(row=i, column=1, sticky="w")
+            self.meta_entries[key] = entry
 
     def crop_and_save(self):
         try:
@@ -137,6 +181,16 @@ class GPXViewer:
 
         messagebox.showinfo("Saved", f"Cropped GPX saved to {os.path.basename(save_path)}")
 
+    def reset_selection(self):
+        self.start_entry.delete(0, tk.END)
+        self.end_entry.delete(0, tk.END)
+        self.display_route_and_elevation()
+
+    def invert_trail(self):
+        self.points.reverse()
+        self.display_route_and_elevation()
+        self.display_metadata()
+
     def on_hover(self, event):
         if not self.points or event.inaxes not in [self.ax_route, self.ax_elev]:
             return
@@ -149,7 +203,6 @@ class GPXViewer:
         if index is None or not (0 <= index < len(self.points)):
             return
 
-        # Clear previous markers
         if self.route_marker:
             self.route_marker.remove()
         if self.elev_marker:
@@ -161,10 +214,50 @@ class GPXViewer:
         self.canvas_route.draw()
         self.canvas_elev.draw()
 
+    def on_mouse_press(self, event):
+        if event.inaxes == self.ax_elev and event.xdata is not None:
+            x = int(event.xdata)
+            self.select_start = max(0, min(x, len(self.points) - 1))
+            self.selecting_crop = True
+
+    def on_mouse_release(self, event):
+        if event.inaxes == self.ax_elev and event.xdata is not None:
+            x = int(event.xdata)
+            self.select_end = max(0, min(x, len(self.points) - 1))
+            self.selecting_crop = False
+            start = min(self.select_start, self.select_end)
+            end = max(self.select_start, self.select_end)
+            self.start_entry.delete(0, tk.END)
+            self.start_entry.insert(0, str(start))
+            self.end_entry.delete(0, tk.END)
+            self.end_entry.insert(0, str(end))
+            self.display_route_and_elevation()
+
+    def on_mouse_drag(self, event):
+        if self.selecting_crop and event.inaxes == self.ax_elev and event.xdata is not None:
+            x = int(event.xdata)
+            self.select_end = max(0, min(x, len(self.points) - 1))
+            start = min(self.select_start, self.select_end)
+            end = max(self.select_start, self.select_end)
+            self.start_entry.delete(0, tk.END)
+            self.start_entry.insert(0, str(start))
+            self.end_entry.delete(0, tk.END)
+            self.end_entry.insert(0, str(end))
+            self.display_route_and_elevation()
+
     def find_closest_index_by_lon(self, lon):
         if not self.lons:
             return None
         return min(range(len(self.lons)), key=lambda i: abs(self.lons[i] - lon))
+
+    def get_valid_index(self, value, default):
+        try:
+            idx = int(value)
+            if 0 <= idx < len(self.points):
+                return idx
+            return default
+        except:
+            return default
 
 if __name__ == '__main__':
     root = tk.Tk()
